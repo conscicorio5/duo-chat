@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DuoChat</title>
+<style>
+:root{
+  --bg:#f4f4f6; --panel:#ffffff; --text:#1a1a1e; --sub:#6b6b74;
+  --accent:#6c5ce7; --bubble-me:#6c5ce7; --bubble-them:#e9e9ee; --border:#e2e2e8;
+  box-sizing:border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141417; --panel:#1e1e23; --text:#f2f2f5; --sub:#9a9aa4;
+    --bubble-them:#2b2b32; --border:#2d2d34;
+  }
+}
+html{height:100%; scroll-padding-top: env(safe-area-inset-top,0px);}
+body{height:100%; margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  display:flex; flex-direction:column;}
+
+/* --- Verrou PIN --- */
+#lockScreen{
+  position:fixed; inset:0; background:var(--bg); z-index:30;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:20px;
+}
+#lockScreen h2{margin:0; font-size:18px;}
+#lockScreen p{color:var(--sub); font-size:14px; margin:0; text-align:center; max-width:260px;}
+#dots{display:flex; gap:14px;}
+.dot{width:14px; height:14px; border-radius:50%; border:1.5px solid var(--sub); background:transparent;}
+.dot.filled{background:var(--accent); border-color:var(--accent);}
+#keypad{display:grid; grid-template-columns:repeat(3,64px); gap:14px; margin-top:6px;}
+#keypad button{
+  width:64px; height:64px; border-radius:50%; border:1px solid var(--border);
+  background:var(--panel); color:var(--text); font-size:22px; cursor:pointer;
+}
+#keypad button:active{background:var(--bubble-them);}
+#lockError{color:#e15656; font-size:13px; height:16px;}
+
+/* --- Setup (premier lancement) --- */
+#setupScreen{
+  position:fixed; inset:0; background:var(--bg); z-index:25;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px;
+}
+#setupScreen input{
+  padding:12px 16px; border-radius:14px; border:1px solid var(--border);
+  background:var(--panel); color:var(--text); font-size:16px; width:100%; max-width:280px; text-align:center;
+}
+#setupScreen button{
+  background:var(--accent); color:#fff; border:none; border-radius:14px;
+  padding:12px 24px; font-size:16px; cursor:pointer; width:100%; max-width:280px;
+}
+#setupScreen p{color:var(--sub); font-size:13px; text-align:center; max-width:280px;}
+#setupError{color:#e15656; font-size:13px; min-height:16px;}
+
+/* --- App --- */
+header{
+  padding: calc(10px + env(safe-area-inset-top,0px)) 16px 10px;
+  background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:5;
+}
+header h1{font-size:17px; margin:0;}
+nav{display:flex; gap:8px;}
+nav button{border:none; background:transparent; color:var(--sub); font-size:14px; padding:6px 10px; border-radius:20px; cursor:pointer;}
+nav button.active{background:var(--accent); color:#fff;}
+main{flex:1; overflow:hidden; display:flex; flex-direction:column; min-height:0;}
+.screen{flex:1; display:none; flex-direction:column; min-height:0;}
+.screen.active{display:flex;}
+
+#chatLog{flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:8px;}
+.msg{max-width:75%; padding:9px 13px; border-radius:16px; font-size:15px; line-height:1.35; word-wrap:break-word;}
+.msg.me{align-self:flex-end; background:var(--bubble-me); color:#fff; border-bottom-right-radius:4px;}
+.msg.them{align-self:flex-start; background:var(--bubble-them); color:var(--text); border-bottom-left-radius:4px;}
+.msg .name{font-size:11px; opacity:.7; display:block; margin-bottom:2px;}
+
+#chatInputRow{display:flex; gap:8px; padding:10px; background:var(--panel); border-top:1px solid var(--border);
+  padding-bottom: calc(10px + env(safe-area-inset-bottom,0px));}
+#chatInputRow input{flex:1; padding:10px 14px; border-radius:20px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:15px; outline:none;}
+#chatInputRow button{background:var(--accent); color:#fff; border:none; border-radius:20px; padding:0 18px; font-size:15px; cursor:pointer;}
+
+#gameScreen{align-items:center; justify-content:flex-start; padding:20px 16px; gap:16px; overflow-y:auto;}
+#gameStatus{font-size:15px; color:var(--sub); text-align:center;}
+#board{display:grid; grid-template-columns:repeat(3,84px); grid-template-rows:repeat(3,84px); gap:8px;}
+.cell{background:var(--panel); border:1px solid var(--border); border-radius:12px; font-size:38px;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--accent); user-select:none;}
+#resetGame{background:var(--bubble-them); color:var(--text); border:none; border-radius:20px; padding:10px 18px; font-size:14px; cursor:pointer;}
+#connStatus{font-size:12px; color:var(--sub); text-align:center; padding:4px;}
+</style>
+</head>
+<body>
+
+<div id="setupScreen">
+  <h2>👋 Bienvenue sur DuoChat</h2>
+  <input id="setupName" maxlength="20" placeholder="Ton prénom">
+  <input id="setupServer" placeholder="Adresse du serveur (https://...)">
+  <input id="setupPin" maxlength="4" inputmode="numeric" placeholder="Choisis un code à 4 chiffres">
+  <p id="setupError"></p>
+  <button id="setupOk">Commencer</button>
+  <p>Le code protège l'ouverture de l'appli sur ce téléphone.</p>
+</div>
+
+<div id="lockScreen" style="display:none;">
+  <h2>🔒 Code d'accès</h2>
+  <div id="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  <p id="lockError"></p>
+  <div id="keypad"></div>
+</div>
+
+<header>
+  <h1>💬 DuoChat</h1>
+  <nav>
+    <button id="tabChat" class="active">Chat</button>
+    <button id="tabGame">Morpion</button>
+  </nav>
+</header>
+
+<main>
+  <section id="chatScreen" class="screen active">
+    <div id="connStatus">Connexion...</div>
+    <div id="chatLog"></div>
+    <div id="chatInputRow">
+      <input id="chatInput" placeholder="Écris un message..." autocomplete="off">
+      <button id="chatSend">Envoyer</button>
+    </div>
+  </section>
+
+  <section id="gameScreen" class="screen">
+    <div id="gameStatus">Chargement...</div>
+    <div id="board"></div>
+    <button id="resetGame">Nouvelle partie</button>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const setupScreen = document.getElementById('setupScreen');
+const lockScreen = document.getElementById('lockScreen');
+let myName = localStorage.getItem('duochat_name') || '';
+let myPin = localStorage.getItem('duochat_pin') || '';
+let serverUrl = localStorage.getItem('duochat_server') || '';
+
+// ---- Etape 1 : configuration initiale ----
+if (myName && myPin && serverUrl) {
+  setupScreen.style.display = 'none';
+  showLock();
+} else {
+  document.getElementById('setupOk').onclick = () => {
+    const name = document.getElementById('setupName').value.trim();
+    const server = document.getElementById('setupServer').value.trim();
+    const pin = document.getElementById('setupPin').value.trim();
+    const err = document.getElementById('setupError');
+    if (!name) { err.textContent = 'Entre ton prénom.'; return; }
+    if (!/^https?:\/\//.test(server)) { err.textContent = "L'adresse du serveur doit commencer par https://"; return; }
+    if (!/^\d{4}$/.test(pin)) { err.textContent = 'Le code doit contenir exactement 4 chiffres.'; return; }
+    localStorage.setItem('duochat_name', name);
+    localStorage.setItem('duochat_pin', pin);
+    localStorage.setItem('duochat_server', server.replace(/\/$/, ''));
+    myName = name; myPin = pin; serverUrl = server.replace(/\/$/, '');
+    setupScreen.style.display = 'none';
+    showLock();
+  };
+}
+
+// ---- Etape 2 : verrou PIN ----
+let entered = '';
+function showLock(){
+  lockScreen.style.display = 'flex';
+  const keypad = document.getElementById('keypad');
+  keypad.innerHTML = '';
+  ['1','2','3','4','5','6','7','8','9','','0','⌫'].forEach(k => {
+    const b = document.createElement('button');
+    b.textContent = k;
+    if (k === '') { b.style.visibility = 'hidden'; }
+    else {
+      b.onclick = () => {
+        if (k === '⌫') { entered = entered.slice(0, -1); }
+        else if (entered.length < 4) { entered += k; }
+        updateDots();
+        if (entered.length === 4) checkPin();
+      };
+    }
+    keypad.appendChild(b);
+  });
+}
+function updateDots(){
+  document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('filled', i < entered.length));
+}
+function checkPin(){
+  if (entered === myPin) {
+    lockScreen.style.display = 'none';
+    startApp();
+  } else {
+    document.getElementById('lockError').textContent = 'Code incorrect.';
+    setTimeout(() => { entered = ''; updateDots(); document.getElementById('lockError').textContent = ''; }, 500);
+  }
+}
+
+// ---- Etape 3 : l'appli ----
+let socket = null;
+function startApp(){
+  socket = io(serverUrl);
+  const connStatus = document.getElementById('connStatus');
+  socket.on('connect', () => { connStatus.textContent = 'Connecté ✅'; setTimeout(() => connStatus.style.display='none', 1500); });
+  socket.on('disconnect', () => { connStatus.style.display='block'; connStatus.textContent = 'Déconnecté, reconnexion...'; });
+  socket.on('init', (data) => { renderMessages(data.messages || []); renderBoard(data.game); });
+  socket.on('new_message', (msg) => { appendMessage(msg); });
+  socket.on('game_update', (state) => { renderBoard(state); });
+}
+
+// Onglets
+const tabChat = document.getElementById('tabChat');
+const tabGame = document.getElementById('tabGame');
+const chatScreen = document.getElementById('chatScreen');
+const gameScreen = document.getElementById('gameScreen');
+tabChat.onclick = () => switchTab('chat');
+tabGame.onclick = () => switchTab('game');
+function switchTab(t){
+  tabChat.classList.toggle('active', t==='chat');
+  tabGame.classList.toggle('active', t==='game');
+  chatScreen.classList.toggle('active', t==='chat');
+  gameScreen.classList.toggle('active', t==='game');
+}
+
+// Chat
+const chatLog = document.getElementById('chatLog');
+document.getElementById('chatSend').onclick = sendMessage;
+document.getElementById('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+function renderMessages(list){ chatLog.innerHTML = ''; list.forEach(appendMessage); }
+function appendMessage(m){
+  const div = document.createElement('div');
+  div.className = 'msg ' + (m.sender === myName ? 'me' : 'them');
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'name';
+  nameSpan.textContent = m.sender === myName ? 'Toi' : m.sender;
+  div.appendChild(nameSpan);
+  div.appendChild(document.createTextNode(m.text));
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+function sendMessage(){
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || !socket) return;
+  input.value = '';
+  socket.emit('send_message', { sender: myName, text });
+}
+
+// Jeu
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('gameStatus');
+document.getElementById('resetGame').onclick = () => socket && socket.emit('reset_game');
+function checkWinner(c){
+  const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  for (const [a,b,cc] of lines) if (c[a] && c[a]===c[b] && c[a]===c[cc]) return c[a];
+  if (c.every(x => x)) return 'draw';
+  return null;
+}
+function renderBoard(state){
+  const cells = (state && state.cells) || Array(9).fill('');
+  boardEl.innerHTML = '';
+  cells.forEach((v, i) => {
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.textContent = v;
+    c.onclick = () => socket && socket.emit('play_move', { index: i });
+    boardEl.appendChild(c);
+  });
+  const winner = checkWinner(cells);
+  const turn = (state && state.turn) || 'X';
+  statusEl.textContent = winner === 'draw' ? 'Match nul !' : winner ? (winner + ' a gagné 🎉') : ('Tour de : ' + turn);
+}
+</script>
+</body>
+</html>
